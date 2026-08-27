@@ -1,10 +1,17 @@
-# Main pipeline: inference (run_infer, parse_page_*, build_*) + dev eval
-# (evaluate_dev, which reuses the vendored DrDocBench Text/TEDS/Reading-order metrics).
+# Inference + dev evaluation (incl. Formula CDM scoring), single env.
+# numpy is pinned <2 because the CDM renderer needs numpy 1.x / scikit-image<=0.20;
+# the rest of the pipeline is fine with it.
+
+# Inference (run_infer, parse_page_*, build_*)
 openai>=1.0
 pillow>=10.0
-python-Levenshtein
-numpy
 
-# Formula CDM scoring (score_cdm.py, overall_dev.py) needs a SEPARATE env because it
-# pins numpy<2 / scikit-image<=0.20 — see requirements-cdm.txt.
-# Layout detector (detect_columns.py) also needs its own env: doclayout-yolo + torch.
+# Dev evaluation — Text / TEDS / Reading-order (evaluate_dev) + Formula CDM
+# (score_cdm.py, overall_dev.py: LaTeX -> PDF -> Hungarian char matching)
+python-Levenshtein
+numpy==1.26.4
+scikit-image==0.20.0
+pymupdf==1.28.2
+
+# CDM also needs (not pip-installable): TinyTeX with xelatex on PATH, and node (KaTeX tokenizer).
+# Layout detector (detect_columns.py) is optional and needs its own env: doclayout-yolo + torch.
