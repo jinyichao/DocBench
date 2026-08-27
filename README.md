@@ -6,19 +6,12 @@ distance, Table TEDS, Formula CDM, and Reading Order (per-page-averaged Overall)
 
 ## Result
 
-Best leaderboard **Overall = 71.33** (Public Validation, 509-page set), from:
+Best leaderboard **Overall = 71.33** (Public Validation, 509-page set):
+Text edit distance 0.194, Table TEDS 69.35, Reading Order 69.05.
 
-| Step | Overall | Lever |
-|---|---|---|
-| Qwen + v2 table prompt | 69.26 | HTML `<td>`-only tables, exact grid |
-| + Gemini table ensemble | 69.65 | route table pages to Gemini (wins TEDS) |
-| + image upscaling to 2000px | 70.68 | clears the VLM encoder's visual-token floor on low-res scans |
-| + `smiles` for drawn structures | 70.69 | chemistry structures as ```smiles blocks |
-| + JPEG quality 100 on low-res pages | **71.33** | less compression artifact on small glyphs |
-
-The two biggest gains (upscaling, q100) came from feeding the model higher-fidelity images —
-the test scans are low-resolution (median 968px), and the model was resolution-starved, not
-capability-limited.
+Key levers: v2 HTML table prompt, Gemini table-page ensemble, and — the biggest gains —
+higher-fidelity images (upscale to 2000px + JPEG q100), since the test scans are
+low-resolution (median 968px) and the model was resolution-starved, not capability-limited.
 
 ## Engine
 
