@@ -1,0 +1,9 @@
+# Inference pipeline
+openai>=1.0
+pillow>=10.0
+
+# Dev evaluation (reuses vendored DrDocBench metrics)
+python-Levenshtein
+numpy
+# Formula CDM (separate env recommended: numpy<2, scikit-image<=0.20, PyMuPDF, TinyTeX)
+# Layout detector (separate env): doclayout-yolo, torch

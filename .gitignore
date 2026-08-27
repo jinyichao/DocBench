@@ -1,0 +1,21 @@
+# Secrets — API keys, never commit
+secrets/
+.env
+
+# Data & large artifacts (not source)
+data/
+outputs/
+submissions/*.zip
+vendor/
+
+# Python / venvs
+__pycache__/
+*.pyc
+.venv/
+.venv-*/
+
+# OS
+.DS_Store
+
+# Logs
+*.log
