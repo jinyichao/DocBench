@@ -34,7 +34,7 @@ src/
   # dev evaluation (local, reuses vendored DrDocBench metrics)
   evaluate_dev.py      Text/TEDS/Reading-order on the dev split
   overall_dev.py       exact per-page Overall (with rendered CDM)
-  score_cdm.py         offline Formula CDM (needs .venv-cdm: TinyTeX + PyMuPDF)
+  score_cdm.py         offline Formula CDM (separate env: requirements-cdm.txt + TinyTeX)
   detect_columns.py    DocLayout-YOLO layout detector (table/column page selection)
 ```
 

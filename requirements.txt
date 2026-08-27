@@ -1,9 +1,10 @@
-# Inference pipeline
+# Main pipeline: inference (run_infer, parse_page_*, build_*) + dev eval
+# (evaluate_dev, which reuses the vendored DrDocBench Text/TEDS/Reading-order metrics).
 openai>=1.0
 pillow>=10.0
-
-# Dev evaluation (reuses vendored DrDocBench metrics)
 python-Levenshtein
 numpy
-# Formula CDM (separate env recommended: numpy<2, scikit-image<=0.20, PyMuPDF, TinyTeX)
-# Layout detector (separate env): doclayout-yolo, torch
+
+# Formula CDM scoring (score_cdm.py, overall_dev.py) needs a SEPARATE env because it
+# pins numpy<2 / scikit-image<=0.20 — see requirements-cdm.txt.
+# Layout detector (detect_columns.py) also needs its own env: doclayout-yolo + torch.

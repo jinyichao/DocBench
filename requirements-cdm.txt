@@ -1,0 +1,12 @@
+# Formula CDM env (score_cdm.py / overall_dev.py). Install into a dedicated venv,
+# e.g.  python -m venv .venv-cdm && .venv-cdm/bin/pip install -r requirements-cdm.txt
+# Pinned because the CDM renderer needs numpy<2 and scikit-image<=0.20.
+#
+# Also requires (not pip-installable):
+#   - TinyTeX with xelatex on PATH (LaTeX -> PDF)
+#   - node (KaTeX tokenizer)
+pymupdf==1.28.2
+numpy==1.26.4
+scikit-image==0.20.0
+pillow
+python-Levenshtein
