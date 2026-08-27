@@ -58,10 +58,3 @@ python src/build_submission.py --run test_ensemble --out submissions/test_ensemb
 
 Key knobs (env or `config.py`): `IMAGE_MAX_EDGE=2000`, `IMAGE_UPSCALE=1`,
 `IMAGE_JPEG_QUALITY=100`, `PROMPT_VARIANT=v2`.
-
-## Notes on the scorer (empirically established)
-
-- Text metric penalizes **missing** GT content but not **extra** predicted blocks — when unsure, emit.
-- Reading order is **column-major** (left column fully, then right); the model already matches.
-- Chemistry (`\ce{}`, ```smiles) is scored as **text**, not Formula CDM; the test set has ~no
-  isolated display formulas (Formula CDM ≈ 0 is a near-empty sample, not a failure).
