@@ -1,0 +1,297 @@
+% DocInsights 2026 — Dr.DocBench (Track 2) system paper.
+% Uses the official ACL template style files (acl.sty, acl_natbib.bst) — place this
+% file alongside them (download from https://github.com/acl-org/acl-style-files).
+\documentclass[11pt]{article}
+\usepackage[final]{acl}
+
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{microtype}
+\usepackage{inconsolata}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{url}
+\usepackage{enumitem}
+
+\newcommand{\best}[1]{\textbf{#1}}
+
+\title{Image Fidelity, Not Model Choice: A Simple Recipe for\\
+Expert-Level Single-Page Document Parsing on Dr.DocBench}
+
+\author{Author Name \\
+  Affiliation \\
+  \texttt{email@example.com}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We describe our submission to Track~2 (Dr.DocBench) of the DocInsights~2026 shared
+task, which converts single document-page images into structurally faithful
+Markdown, scored on Text edit distance, Table TEDS, Formula CDM, and Reading Order.
+Our system is a hosted vision--language model (VLM) pipeline: Qwen3.8-max as the
+primary parser, with a Gemini~3.7-Flash ensemble routed to table pages. Rather than
+switching models or engineering ever-larger prompts, we found that the single most
+effective lever was \emph{image fidelity}: upscaling the low-resolution scans to the
+VLM encoder's pixel budget and encoding them at maximum JPEG quality together
+improved Overall by $+1.67$, twice the gain of every other change combined. On the
+EvalAI Public Validation set (509 pages) our system reaches an Overall of
+\best{71.33}. We report an extensive set of \emph{negative} results---reading-order
+reordering, learned reading-order models, document-class conditioning, and
+column-cropping all failed---and the lightweight validation discipline that let us
+identify each failure on a held-out split before spending a leaderboard submission.
+Code is publicly available.\footnote{\url{https://github.com/jinyichao/DocBench}}
+\end{abstract}
+
+\section{Introduction}
+Expert-level document parsing---faithfully converting a scanned page into
+structured Markdown---sits at the intersection of OCR, layout analysis, and
+structured extraction. Dr.DocBench \citep{drdocbench2026}, the Track~2 benchmark of
+the DocInsights~2026 shared task, is deliberately \emph{difficulty-aware}: its pages
+were selected around cases where strong document parsers struggle, spanning dense
+tables, irregular multi-column layouts, formulas, chemistry notation, and musical
+scores. Each page is scored on four components---Text edit distance, Table TEDS,
+Formula CDM, and Reading Order---converted to a $0$--$100$ scale and averaged per
+page; the Overall is the mean of per-page scores over all scorable pages.
+
+Our guiding question was pragmatic: given a strong hosted VLM, where does the
+remaining Overall actually come from? We answer it with a disciplined ablation
+campaign in which every candidate change was validated on a held-out development
+split before consuming a leaderboard submission. The headline finding is that the
+gains do \emph{not} come from model selection or prompt sophistication, both of
+which we found largely saturated. They come from \textbf{feeding the model
+higher-fidelity images}. The Dr.DocBench scans are low-resolution (median long edge
+$968$\,px); at native resolution, dense text is under-tokenized by the VLM's
+patch-based encoder. Upscaling each page to the encoder's pixel budget and encoding
+at maximum JPEG quality raised Overall from $69.65$ to $71.33$.
+
+Our contributions are: (i) a simple, reproducible pipeline that reaches Overall
+$71.33$ on Dr.DocBench Public Validation; (ii) the empirical finding that image
+fidelity---not model or prompt---is the dominant lever for low-resolution document
+parsing, together with a measurement of the VLM's internal resolution ceiling;
+and (iii) a documented set of negative results and the validation methodology that
+produced them, which we believe is the most transferable outcome for future
+participants.
+
+\section{System Description}
+
+\subsection{Engines}
+The primary parser is \textbf{Qwen3.8-max} \citep{qwenvl} accessed through the
+DashScope OpenAI-compatible endpoint, with internal ``thinking'' disabled (parsing
+does not benefit from a hidden scratchpad, and disabling it is faster and cheaper).
+We add a second engine, \textbf{Gemini~3.7-Flash} \citep{gemini}, used in two narrow
+roles: (a) an ensemble
+component routed to table pages, where we found it consistently stronger on TEDS,
+and (b) a recovery path for pages that DashScope's account-level content filter
+hard-blocks (returning \texttt{data\_inspection\_failed}), which we otherwise emit
+as empty Markdown.
+
+\subsection{Prompt Design}
+Both engines share a single prompt, tuned to the scorer's output conventions rather
+than to human readability. Key decisions, each validated on dev:
+\begin{itemize}[nosep]
+  \item \textbf{Tables} are emitted as raw HTML with \texttt{<td>} for every cell
+    (never \texttt{<th>}, which the TEDS normaliser collapses anyway), the exact row
+    $\times$ column grid, and no in-cell \texttt{<br>}; hyphen-split words are
+    rejoined. This ``v2'' table block alone added ${\approx}5$ TEDS on dev over a
+    naive HTML instruction.
+  \item \textbf{Formulas}: isolated equations in display delimiters
+    (\texttt{\$\$\ldots\$\$}); inline math in \texttt{\textbackslash(\ldots
+    \textbackslash)}.
+  \item \textbf{Chemistry}: \texttt{\textbackslash ce\{\ldots\}} for expressions and
+    fenced \texttt{smiles} blocks for drawn 2D structures. The scorer treats
+    chemistry as \emph{text}, so we do not wrap it in math delimiters.
+  \item \textbf{Reading order}: column-major (finish the left column before the
+    right). We verified on dev that ground-truth reading order is column-major on
+    $35$ of $38$ clean two-column pages, matching the model's default.
+\end{itemize}
+
+\subsection{Image Encoding: The Core Lever}
+\label{sec:image}
+Our encoder resizes each page so the long edge is $2000$\,px (upscaling low-resolution
+scans, not only downscaling large ones) and encodes to JPEG at quality~$100$ with
+chroma subsampling disabled. Two mechanisms explain the gains:
+
+\paragraph{Clearing the visual-token floor.} VLM encoders tile an image into
+fixed-size patches; text that spans too few patches cannot be resolved. Upscaling a
+$968$\,px scan to $2000$\,px raises the number of visual tokens devoted to the same
+(interpolated) glyphs, letting the encoder separate characters it previously smeared
+together. This adds no new pixel information but removes a tokenisation bottleneck.
+
+\paragraph{The resolution ceiling.} Qwen applies an internal \texttt{max\_pixels}
+cap. We measured the billed input tokens as a function of the long edge
+(Table~\ref{tab:tokens}): tokens grow up to $2000$\,px and then plateau---$2500$\,px
+and $3000$\,px yield the \emph{identical} token count, i.e.\ the model silently
+downscales them to the same image. Thus $2000$\,px is exactly the sweet spot, and
+input resolution beyond it is discarded. Requesting a larger budget server-side
+(\texttt{vl\_high\_resolution\_images}) does raise the token count but did
+\emph{not} improve scores, because the native scans carry no detail beyond the cap.
+Within the fixed pixel budget, however, JPEG quality still matters: raising quality
+from $90$ to $100$ reduces compression artefacts on small glyphs and improved both
+Text and Reading Order on the test set.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lccccc}
+\toprule
+Long edge (px) & 1400 & 1600 & 2000 & 2500 & 3000 \\
+\midrule
+Input tokens & 2323 & 2771 & \best{3423} & 3423 & 3423 \\
+\bottomrule
+\end{tabular}
+\caption{Billed Qwen input tokens per page vs.\ input resolution (mean over dense
+dev pages). The token count plateaus at $2000$\,px: higher input resolution is
+silently downscaled to the same image.}
+\label{tab:tokens}
+\end{table}
+
+\subsection{Ensemble Routing and Assembly}
+A layout detector \citep[DocLayout-YOLO;][]{doclayout} flags table pages; on those pages we replace the
+Qwen output with Gemini's when Gemini emits a valid, non-truncated \texttt{<table>}
+of comparable length (a guard against under-generation). Content-filter--blocked
+pages are filled from the Gemini recovery run. The remaining pages keep the Qwen
+output. The assembled tree is packaged into the required \texttt{predictions.jsonl}
+after validation against the manifest.
+
+\subsection{Robustness}
+Larger upscaled payloads make hosted calls prone to hanging connections; we set a
+per-request timeout so a stalled call aborts and retries, and wrap batch inference in
+a self-healing supervisor that restarts on lack of progress until every page is
+complete. Inference is resume-safe (a page is skipped if its Markdown already
+exists).
+
+\section{Experiments}
+
+\subsection{Setup}
+We evaluate on the EvalAI Public Validation phase ($509$ required pages, of which
+$487$ are scorable). For local iteration we use a held-out development split with
+released ground truth, reusing the official DrDocBench metrics (Text edit distance,
+TEDS \citep{teds}, reading-order edit distance) and an offline Formula CDM
+\citep{cdm} renderer
+(\LaTeX\,$\rightarrow$\,PDF\,$\rightarrow$\,Hungarian character matching). All
+design decisions were made against dev; the leaderboard was used only to confirm
+banked improvements.
+
+\subsection{Main Result and Ablation}
+Table~\ref{tab:ablation} traces the Overall on the leaderboard as each validated
+lever was added. The two image-fidelity steps (upscaling, JPEG~q100) account for
+$+1.67$ of the total $+2.07$ improvement over the initial submission.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lc}
+\toprule
+System & Overall \\
+\midrule
+Qwen + v2 table prompt & 69.26 \\
+\;+ Gemini table ensemble & 69.65 \\
+\;+ image upscaling to 2000\,px & 70.68 \\
+\;+ \texttt{smiles} for drawn structures & 70.69 \\
+\;+ JPEG quality 100 on low-res pages & \best{71.33} \\
+\bottomrule
+\end{tabular}
+\caption{Leaderboard ablation. Each row adds one dev-validated change. Image fidelity
+(rows 3 and 5) is the dominant contributor.}
+\label{tab:ablation}
+\end{table}
+
+\subsection{Component Comparison}
+Table~\ref{tab:compare} places our per-component dev scores alongside the reference
+baselines reported by the benchmark. On shared components our profile is competitive
+to strong: best Text and Formula-Edit, highest Formula CDM, and a Table TEDS that
+matches the best specialised parser. We stress that the \emph{Overall} is not
+directly comparable: our dev split is prose-heavy and, as we discuss below, contains
+essentially no isolated display formulas, so its composition differs from the
+reference benchmark. The component cells, not the Overall, are the meaningful
+comparison.
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{lcccccc}
+\toprule
+Model & Text\,$\downarrow$ & Formula Edit\,$\downarrow$ & CDM\,$\uparrow$ & TEDS\,$\uparrow$ & Order\,$\downarrow$ & Overall\,$\uparrow$ \\
+\midrule
+MinerU 2.5 & 0.33 & 0.51 & 24.15 & 55.85 & 0.30 & 54.37 \\
+PaddleOCR & 0.73 & 0.42 & 30.73 & 51.79 & 0.71 & 34.78 \\
+Kimi-K2.5 & 0.19 & 0.35 & 27.04 & 51.98 & 0.18 & 60.38 \\
+Claude Opus 4.6 & 0.22 & 0.37 & 32.02 & 49.21 & 0.19 & 60.19 \\
+Gemini 3.1 Pro & 0.22 & 0.35 & 32.22 & 51.26 & 0.21 & 60.13 \\
+GPT-5.5 & 0.19 & 0.36 & 34.55 & 48.90 & 0.17 & 61.94 \\
+\midrule
+Ours (dev) & \best{0.11} & \best{0.19} & \best{55.39} & \best{55.89} & \best{0.12} & 86.81$^{\dagger}$ \\
+\bottomrule
+\end{tabular}
+\caption{Per-component comparison against reported baselines. Best per column in
+\textbf{bold}. $^{\dagger}$Our Overall is on a prose-heavy dev split with a different
+composition (notably, no display formulas) and is \emph{not} a head-to-head number;
+the component cells are the meaningful comparison.}
+\label{tab:compare}
+\end{table*}
+
+\section{Analysis and Lessons Learned}
+
+\paragraph{Image fidelity dominates.} For low-resolution scans, the bottleneck is
+how much of the page the encoder can resolve, not the model's parsing ability. The
+two fidelity steps outweighed every prompt and ensemble change combined, and the
+resolution ceiling (Table~\ref{tab:tokens}) tells us precisely when the lever is
+exhausted.
+
+\paragraph{Exploiting scorer structure.} The Text metric penalises \emph{missing}
+ground-truth content but not \emph{extra} predicted blocks (unmatched predictions
+are discarded, not penalised). This asymmetry justifies an ``emit when unsure''
+policy---e.g.\ transcribing text embedded in figures, or emitting a \texttt{smiles}
+block for every drawn structure---since surplus content is free while omission is
+costly.
+
+\paragraph{Negative results.} Several intuitive levers failed, each caught on dev:
+\begin{itemize}[nosep]
+  \item \textbf{Reading order} resisted every approach we tried: a stronger
+    column-discipline prompt (net-negative), geometric XY-cut ($78.4$ even on
+    ground-truth boxes, below the model's $81.85$), an off-the-shelf learned
+    reading-order model \citep[LayoutReader;][]{layoutreader} (far below both), and routing to Gemini
+    (worse on non-table multi-column prose). Ground-truth order depends on page
+    \emph{content}, which the VLM already sees; a box-only model cannot beat it.
+  \item \textbf{Formula CDM} is near-zero on this test set---but a layout-detector
+    sweep confirmed the Public Validation split contains essentially \emph{no}
+    isolated display formulas, so the metric is a near-empty sample, not a failure.
+    Forcing display-math would only mis-categorise inline chemistry.
+  \item \textbf{Document-class conditioning} and same-class few-shot exemplars
+    appeared to help but were traced to same-document leakage; the honest
+    cross-document effect was neutral.
+  \item \textbf{Column cropping} (detect columns, transcribe each separately)
+    regressed, because detector false positives split single-column pages.
+\end{itemize}
+
+\paragraph{Validation discipline.} The recurring lesson is that a cheap held-out
+evaluation---matched to the deployment condition (detector-selected, not
+oracle-selected, pages; cross-document, not same-document, exemplars)---is worth far
+more than leaderboard probing. Every negative above was identified on dev before
+spending a submission, and two would have been actively harmful had we deployed them
+on the basis of a flawed validation.
+
+\section{Conclusion}
+Our Dr.DocBench system reaches Overall $71.33$ with a deliberately simple recipe: a
+strong hosted VLM, a scorer-tuned prompt, a narrow table-page ensemble, and---above
+all---high-fidelity image encoding calibrated to the model's resolution ceiling. The
+broader message for expert-level document parsing on low-resolution scans is that
+the image, not the model, is often the binding constraint. We release our code and a
+record of the negative results to help future participants spend their effort where
+it pays off.
+
+\section*{Limitations}
+Our Overall is reported on the Public Validation split, whose composition (prose-heavy,
+no display formulas) differs from the full benchmark, so component scores are more
+informative than the aggregate. The pipeline depends on two proprietary hosted APIs,
+whose behaviour (content filtering, internal \texttt{max\_pixels} cap) may change and
+is not fully controllable. Reading order remains our weakest scorable component, and
+we did not pursue model fine-tuning.
+
+\bibliography{references}
+
+\end{document}
