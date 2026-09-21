@@ -6,12 +6,19 @@ distance, Table TEDS, Formula CDM, and Reading Order (per-page-averaged Overall)
 
 ## Result
 
-Best leaderboard **Overall = 71.33** (Public Validation, 509-page set):
-Text edit distance 0.194, Table TEDS 69.35, Reading Order 69.05.
+Best leaderboard **Overall = 72.02** (Public Validation, 509-page set):
+Text edit distance 0.1831, Table TEDS 70.47, Formula CDM 0.0, Reading Order 69.65.
 
-Key levers: v2 HTML table prompt, Gemini table-page ensemble, and — the biggest gains —
-higher-fidelity images (upscale to 2000px + JPEG q100), since the test scans are
-low-resolution (median 968px) and the model was resolution-starved, not capability-limited.
+Key levers: v2 HTML table prompt, Gemini table-page ensemble, and higher-fidelity images
+(upscale to 2000px + JPEG q100), since the test scans are low-resolution (median 968px) and
+the model was resolution-starved, not capability-limited. On top of that, a manual audit pass
+fixed content-fidelity and block-granularity bugs across the corpus — most notably giving
+DRAMA play-script dialogue per-speaker-turn block granularity (the single largest lever after
+image fidelity) and removing/correcting a handful of pages where the source scan was too
+degraded to transcribe reliably rather than leaving guessed content in place. See
+[`SESSION_LOG.md`](SESSION_LOG.md) for the full record of what worked and what didn't,
+including several reverted experiments (splitting header/footer/page-number content into more
+blocks looked plausible but never helped, since those categories are excluded from scoring).
 
 ## Engine
 
@@ -30,6 +37,7 @@ src/
   run_infer.py         batch runner over a split (resume-safe, --pages-file, --backend)
   build_ensemble.py    Qwen base + guarded Gemini table splice + recovery fill -> ensemble run
   build_submission.py  ensemble run -> predictions.jsonl -> validated zip
+  build_submission_filetree.py  ensemble run -> Markdown File Tree zip (EvalAI's recommended format)
   run_until_done.sh    self-healing supervisor (restarts on DashScope stalls)
   # dev evaluation (local, reuses vendored DrDocBench metrics)
   evaluate_dev.py      Text/TEDS/Reading-order on the dev split
@@ -54,7 +62,12 @@ python src/build_ensemble.py --qwen outputs/test_qwen --gemini outputs/test_gemi
     --table-pages outputs/test_table_pages.txt --recover outputs/test_recover \
     --out outputs/test_ensemble
 python src/build_submission.py --run test_ensemble --out submissions/test_ensemble.zip
+# or, for EvalAI's recommended Markdown File Tree format:
+python src/build_submission_filetree.py --run test_ensemble --out submissions/test_ensemble_filetree.zip
 ```
 
 Key knobs (env or `config.py`): `IMAGE_MAX_EDGE=2000`, `IMAGE_UPSCALE=1`,
 `IMAGE_JPEG_QUALITY=100`, `PROMPT_VARIANT=v2`.
+
+The confirmed-best submission (`submission_72.02.zip`, jsonl format) is committed at the repo
+root for reference/reproducibility.
