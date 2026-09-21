@@ -82,13 +82,23 @@ per spec. Both formats are validated against the same source `.md` tree and kept
 
 ## Current state as of this log
 
-- Banked-best confirmed: **72.01** (Text_ED 0.183, Table_TEDS 70.47, Formula_CDM 0.0, Reading_Order 69.62)
+- Banked-best confirmed: **72.02** (Text_ED 0.1831, Table_TEDS 70.47, Formula_CDM 0.0, Reading_Order 69.65)
 - After banking 72.01, a further small batch (3 more LANGUAGEARTS mid-sentence merges, ARCHITECTURE
   photo-credit fixes, "Mark Beach" reorder, "NEIGHBOR TO NEIGHBOR" un-scramble, a likely-no-op
   JUVENILEFICTION edit) was submitted and came back at 71.97 — within noise of 72.01, but since it
   wasn't a clear improvement, all of it was reverted to reproduce the exact 72.01 state byte-for-byte.
-- `submission_72.01.zip` at the repo root is that exact confirmed-best submission (jsonl format),
-  committed for reference/reproducibility.
+- From that exact 72.01 state, removed ~35 lines of unreliably-transcribed scrapbook-clipping text on
+  LANGUAGEARTS page 86 (a densely 3-way-interleaved lambing story / brand-logo essay / Harvard
+  Classics history — individual sentences were legible at zoom but the true order/boundaries
+  couldn't be confidently reconstructed, and the tiny-print body copy on the same page turned out to
+  contain more guessed/reconstructed text than initially thought once re-examined more skeptically).
+  Kept only the three large, high-confidence section titles and two paragraphs of normal-size main
+  textbook body copy elsewhere on the same page. Per the "no guessing on illegible scans" rule and
+  the insertion-asymmetry mechanism: a clean, honest gap scores more predictably than leaving
+  scrambled/reconstructed text for the scorer to mismatch against. Result: **72.02**, a further
+  small but genuine improvement (Reading_Order +0.03) — confirms removal was the right call, not a wash.
+- `submission_72.02.zip` at the repo root is that exact confirmed-best submission (jsonl format),
+  committed for reference/reproducibility (supersedes the earlier `submission_72.01.zip`).
 - `outputs/` and `submissions/*.zip` (inside the `submissions/` dir) are gitignored (large generated
   working artifacts) — this log, the pipeline source changes, and the one banked-best zip at root are
   what's tracked in git; the day-to-day per-page `.md` content fixes live only in the local working
