@@ -83,10 +83,13 @@ per spec. Both formats are validated against the same source `.md` tree and kept
 ## Current state as of this log
 
 - Banked-best confirmed: **72.01** (Text_ED 0.183, Table_TEDS 70.47, Formula_CDM 0.0, Reading_Order 69.62)
-- Latest built submissions (`submissions/test_ensemble_q100_audited.zip` and
-  `..._filetree.zip`) additionally include, on top of the 72.01 state: 3 more LANGUAGEARTS
-  mid-sentence merges, the ARCHITECTURE photo-credit fixes, the "Mark Beach" reorder, and the
-  "NEIGHBOR TO NEIGHBOR" un-scramble — not yet leaderboard-confirmed as a combined state.
-- `outputs/` and `submissions/*.zip` are gitignored (large generated artifacts) — this log and the
-  pipeline source changes are what's tracked in git; the actual per-page `.md` content fixes live
-  only in the local working tree and the submission zips, not in version control.
+- After banking 72.01, a further small batch (3 more LANGUAGEARTS mid-sentence merges, ARCHITECTURE
+  photo-credit fixes, "Mark Beach" reorder, "NEIGHBOR TO NEIGHBOR" un-scramble, a likely-no-op
+  JUVENILEFICTION edit) was submitted and came back at 71.97 — within noise of 72.01, but since it
+  wasn't a clear improvement, all of it was reverted to reproduce the exact 72.01 state byte-for-byte.
+- `submission_72.01.zip` at the repo root is that exact confirmed-best submission (jsonl format),
+  committed for reference/reproducibility.
+- `outputs/` and `submissions/*.zip` (inside the `submissions/` dir) are gitignored (large generated
+  working artifacts) — this log, the pipeline source changes, and the one banked-best zip at root are
+  what's tracked in git; the day-to-day per-page `.md` content fixes live only in the local working
+  tree, not in version control.
