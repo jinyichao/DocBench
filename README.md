@@ -6,8 +6,8 @@ distance, Table TEDS, Formula CDM, and Reading Order (per-page-averaged Overall)
 
 ## Result
 
-Best leaderboard **Overall = 72.02** (Public Validation, 509-page set):
-Text edit distance 0.1831, Table TEDS 70.47, Formula CDM 0.0, Reading Order 69.65.
+Best leaderboard **Overall = 72.38** (Public Validation, 509-page set):
+Text edit distance 0.1819, Table TEDS 70.47, Formula CDM 0.0, Reading Order 70.29.
 
 Key levers: v2 HTML table prompt, Gemini table-page ensemble, and higher-fidelity images
 (upscale to 2000px + JPEG q100), since the test scans are low-resolution (median 968px) and
@@ -69,5 +69,20 @@ python src/build_submission_filetree.py --run test_ensemble --out submissions/te
 Key knobs (env or `config.py`): `IMAGE_MAX_EDGE=2000`, `IMAGE_UPSCALE=1`,
 `IMAGE_JPEG_QUALITY=100`, `PROMPT_VARIANT=v2`.
 
-The confirmed-best submission (`submission_72.02.zip`, jsonl format) is committed at the repo
+The confirmed-best submission (`submission_72.38.zip`, jsonl format) is committed at the repo
 root for reference/reproducibility.
+
+Two post-processing passes are applied on top of the audited ensemble run, each validated against
+real ground truth on a 200-page dev sample before submission (`src/evaluate_dev.py`):
+
+- `src/split_long_lists.py` — split an enumerated list into one block per item, but ONLY when the
+  mean item length is >= 110 characters. Ground truth splits long-item lists (median item 109 chars)
+  and keeps short/dense ones merged (median 56), so the length gate is what makes this safe; the
+  ungated version regresses. Dev: 3 improvements, 0 regressions. Leaderboard: +0.22 Overall.
+- `src/split_heading_blocks.py` — separate a leading heading line (markdown `#`, or a fully-bold
+  line) from the body text that follows it in the same block; ground truth annotates heading and
+  body separately. Dev: Reading_Order 6 improved / 0 regressed. Leaderboard: +0.14 Overall
+  (Reading_Order 69.87 -> 70.29, at a small Text_ED cost 0.1807 -> 0.1819). 59 test pages.
+- `src/extract_verse_numbers.py` — move marginal verse line-numbers into their own blocks (ground
+  truth annotates them separately). Validated on dev; currently matches 0 test pages, kept for
+  future runs.

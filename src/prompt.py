@@ -8,7 +8,20 @@ utils/extract.py :: md_tex_filter and the dataset README "Task Format" table):
     auto-converted, but native HTML is safest and preserves spans.
   - Isolated/display formulas MUST be LaTeX in display delimiters. The scorer
     treats $$...$$ and \\[...\\] as equation_isolated (scored by CDM + edit dist).
-  - Inline formulas use \\(...\\) or $...$ (scored as text).
+  - CAUTION: the scorer's formula regex runs on the WHOLE page before block
+    splitting and is naive: `\$(.*?)\$` and `\\(...\\)` match ANY pair of $ or
+    \(\) on the page, even across paragraphs, and delete everything between
+    them from the text that gets scored (confirmed both experimentally and by
+    reading vendor/DrDocBench/utils/extract.py::display_reg). Consequences:
+      * NEVER use a literal $ for currency (e.g. "$18 billion"). Two dollar
+        amounts on one page silently deletes all the text between them.
+        Write the number with no $ sign at all -- clean_string strips $ from
+        the ground truth too, so omitting it is scoring-equivalent and safe.
+      * NEVER wrap a plain alphanumeric label/abbreviation in \(...\) or $...$
+        just because it has a subscript-looking part (e.g. ECG leads "aVL",
+        "V1"; "B12"). Write these as plain text. Reserve inline math
+        delimiters for genuine mathematical notation only.
+  - Inline formulas use \\(...\\) or $...$, but ONLY for actual math notation.
   - Chemistry: \\ce{...} (mhchem); SMILES verbatim in a ```smiles block.
   - Code / pseudocode: fenced block with a language tag.
   - Music: MusicXML in a ```musicxml block (no <?xml?> / <score-partwise> wrapper).
@@ -40,7 +53,11 @@ TEXT
 FORMULAS
 - Isolated / display equations: wrap in display delimiters on their own line, e.g.
   $$ E = mc^2 $$
-- Inline math: use \( ... \).
+- Inline math: use \( ... \), but only for genuine mathematical notation.
+- Never write a literal $ for a currency amount (write "18 billion", not "$18 billion").
+- Never wrap a plain label/abbreviation that merely has a subscript-looking part
+  (e.g. ECG lead "aVL", "V1"; vitamin "B12") in \( ... \) or $ ... $ -- write it
+  as plain text.
 - Use standard LaTeX. Do not wrap formulas in code fences.
 
 __TABLES__
@@ -89,8 +106,30 @@ _TABLES_V2 = """TABLES
 _READING_BASE = """READING ORDER
 - Emit blocks in natural human reading order: for multi-column layouts, finish the left column top-to-bottom before the right column. Interleave captions/footnotes at the position they belong to in the flow."""
 
-_READINGS = {"base": _READING_BASE, "v2": _READING_BASE}
-_TABLES = {"base": _TABLES_BASE, "v2": _TABLES_V2}
+# v3: same as v2 but with reading-order rules targeting failure modes measured on a
+# 200-page dev sample (2026-09-22): narrow margin/sidebar columns being interleaved into
+# the main body instead of read as a unit, and boxed callouts being broken up.
+#
+# A third rule ("emit the top-of-page running head first") was tried and REMOVED. On a
+# paired 77-page A/B it fixed 2 pages outright (0.40->0.00, 0.20->0.00) but broke a clean
+# one on BOTH text and order (0.000->0.210 Text_ED, 0.000->0.143 RO). Base-rate check over
+# all dev docs settled it: for genuine running heads (same text on 3+ pages of a doc), GT
+# labels them `header`/`page_number` -- EXCLUDED from scoring -- 79.7% of the time, and a
+# scored `title`/`text_block` only 20.3%. So emitting them is wrong ~4x more often than
+# it is right; the apparent win came from the subset happening to contain one of the 4
+# documents (of 34) where GT scores them. Our v2 default of omitting running heads is
+# already correct ~80% of the time. Do not re-add this rule.
+#
+# STATUS: the two surviving rules are UNTESTED -- the A/B run died at 80/200 when the
+# DashScope weekly quota was exhausted, and the subset contained none of the sidebar pages
+# the first rule targets. v2 remains the default; re-run the A/B before adopting v3.
+_READING_V3 = """READING ORDER
+- Emit blocks in natural human reading order: for multi-column layouts, finish the left column top-to-bottom before the right column. Interleave captions/footnotes at the position they belong to in the flow.
+- Treat a narrow margin or sidebar column as a column of its own: emit all of its blocks top-to-bottom as one contiguous run. Do not interleave them into the main body text.
+- Keep a boxed or shaded callout contiguous: emit its heading first, then its contents, then return to the surrounding body text."""
+
+_READINGS = {"base": _READING_BASE, "v2": _READING_BASE, "v3": _READING_V3}
+_TABLES = {"base": _TABLES_BASE, "v2": _TABLES_V2, "v3": _TABLES_V2}
 
 
 def get_user_prompt(variant="v2"):
@@ -100,4 +139,4 @@ def get_user_prompt(variant="v2"):
 
 
 # Precompute for convenience / validation.
-PROMPTS = {v: get_user_prompt(v) for v in ("base", "v2")}
+PROMPTS = {v: get_user_prompt(v) for v in ("base", "v2", "v3")}
