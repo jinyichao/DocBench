@@ -5,7 +5,7 @@ secrets/
 # Data & large artifacts (not source)
 data/
 outputs/
-submissions/*.zip
+submissions/**/*.zip
 vendor/
 
 # Python / venvs
@@ -28,3 +28,16 @@ paper/*.out
 paper/*.fls
 paper/*.fdb_latexmk
 paper/main.pdf
+
+# Local submission archive and review dumps (final kept in results/)
+/submission_*.zip
+!/submission_72.38.zip
+review_*/
+
+# Notebooks scratch
+.ipynb_checkpoints/
+Untitled*.ipynb
+
+# Slides are maintained as a Claude Slides artifact
+slides/
+submissions/tabswap/

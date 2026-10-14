@@ -15,10 +15,28 @@
 \usepackage{amsmath}
 \usepackage{url}
 \usepackage{enumitem}
+\usepackage{listings}
+% Equalises the two columns on the page where the bibliography ends.
+\usepackage{balance}
+
+% Verbatim style for the prompt listings in the appendix: wraps long lines inside
+% the ACL column and keeps the UTF-8 characters that appear in the prompt.
+\lstdefinestyle{prompt}{
+  basicstyle=\ttfamily\footnotesize,
+  breaklines=true,
+  breakindent=0pt,
+  breakautoindent=false,
+  columns=fullflexible,
+  keepspaces=true,
+  xleftmargin=0pt,
+  frame=none,
+  extendedchars=true,
+  literate={—}{{---}}1 {’}{{'}}1 {“}{{``}}1 {”}{{''}}1 {×}{{$\times$}}1
+}
 
 \newcommand{\best}[1]{\textbf{#1}}
 
-\title{Image Fidelity, Not Model Choice: A Simple Recipe for\\
+\title{Image Fidelity together with VLM Ensemble for\\
 Expert-Level Single-Page Document Parsing on Dr.DocBench}
 
 \author{Author Name \\
@@ -49,7 +67,7 @@ Code is publicly available.\footnote{\url{https://github.com/jinyichao/DocBench}
 \section{Introduction}
 Expert-level document parsing---faithfully converting a scanned page into
 structured Markdown---sits at the intersection of OCR, layout analysis, and
-structured extraction. Dr.DocBench \citep{drdocbench2026}, the Track~2 benchmark of
+structured extraction. Dr.DocBench \citep{yang2026dr}, the Track~2 benchmark of
 the DocInsights~2026 shared task, is deliberately \emph{difficulty-aware}: its pages
 were selected around cases where strong document parsers struggle, spanning dense
 tables, irregular multi-column layouts, formulas, chemistry notation, and musical
@@ -77,9 +95,22 @@ produced them, which we believe is the most transferable outcome for future
 participants.
 
 \section{System Description}
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/pipeline.pdf}
+\caption{End-to-end pipeline. Every page is first upscaled to the VLM encoder's
+pixel budget and re-encoded at JPEG quality~$100$---the single largest contributor
+to our Overall (Section~\ref{sec:image}). A layout detector flags table pages, which
+are additionally parsed by Gemini~3.7-Flash; Qwen3.8-max parses every page. Assembly
+keeps the Gemini table only when it is valid and non-truncated, fills
+content-filter--blocked pages from the Gemini recovery run, and otherwise keeps the
+Qwen output. Both engines share a single prompt (Appendix~\ref{app:prompts}).}
+\label{fig:pipeline}
+\end{figure*}
 
 \subsection{Engines}
-The primary parser is \textbf{Qwen3.8-max} \citep{qwenvl} accessed through the
+Figure~\ref{fig:pipeline} shows the end-to-end flow.
+The primary parser is \textbf{Qwen3.8-max} \citep{qwen38} accessed through the
 DashScope OpenAI-compatible endpoint, with internal ``thinking'' disabled (parsing
 does not benefit from a hidden scratchpad, and disabling it is faster and cheaper).
 We add a second engine, \textbf{Gemini~3.7-Flash} \citep{gemini}, used in two narrow
@@ -90,13 +121,15 @@ hard-blocks (returning \texttt{data\_inspection\_failed}), which we otherwise em
 as empty Markdown.
 
 \subsection{Prompt Design}
+\label{sec:prompt}
 Both engines share a single prompt, tuned to the scorer's output conventions rather
-than to human readability. Key decisions, each validated on dev:
+than to human readability; the full text is reproduced verbatim in
+Appendix~\ref{app:prompts}. Key decisions, each validated on dev:
 \begin{itemize}[nosep]
   \item \textbf{Tables} are emitted as raw HTML with \texttt{<td>} for every cell
     (never \texttt{<th>}, which the TEDS normaliser collapses anyway), the exact row
     $\times$ column grid, and no in-cell \texttt{<br>}; hyphen-split words are
-    rejoined. This ``v2'' table block alone added ${\approx}5$ TEDS on dev over a
+    rejoined. This table block alone added ${\approx}5$ TEDS on dev over a
     naive HTML instruction.
   \item \textbf{Formulas}: isolated equations in display delimiters
     (\texttt{\$\$\ldots\$\$}); inline math in \texttt{\textbackslash(\ldots
@@ -150,7 +183,7 @@ silently downscaled to the same image.}
 \end{table}
 
 \subsection{Ensemble Routing and Assembly}
-A layout detector \citep[DocLayout-YOLO;][]{doclayout} flags table pages; on those pages we replace the
+A layout detector \citep[DocLayout-YOLO;][]{zhao2024doclayout} flags table pages; on those pages we replace the
 Qwen output with Gemini's when Gemini emits a valid, non-truncated \texttt{<table>}
 of comparable length (a guard against under-generation). Content-filter--blocked
 pages are filled from the Gemini recovery run. The remaining pages keep the Qwen
@@ -170,8 +203,8 @@ exists).
 We evaluate on the EvalAI Public Validation phase ($509$ required pages, of which
 $487$ are scorable). For local iteration we use a held-out development split with
 released ground truth, reusing the official DrDocBench metrics (Text edit distance,
-TEDS \citep{teds}, reading-order edit distance) and an offline Formula CDM
-\citep{cdm} renderer
+TEDS \citep{zhong2020image}, reading-order edit distance) and an offline Formula CDM
+\citep{wang2024cdm} renderer
 (\LaTeX\,$\rightarrow$\,PDF\,$\rightarrow$\,Hungarian character matching). All
 design decisions were made against dev; the leaderboard was used only to confirm
 banked improvements.
@@ -188,10 +221,10 @@ $+1.67$ of the total $+2.07$ improvement over the initial submission.
 \toprule
 System & Overall \\
 \midrule
-Qwen + v2 table prompt & 69.26 \\
+Qwen + table prompt & 69.26 \\
 \;+ Gemini table ensemble & 69.65 \\
 \;+ image upscaling to 2000\,px & 70.68 \\
-\;+ \texttt{smiles} for drawn structures & 70.69 \\
+\;+ \texttt{smiles} for 2D structure & 70.69 \\
 \;+ JPEG quality 100 on low-res pages & \best{71.33} \\
 \bottomrule
 \end{tabular}
@@ -200,15 +233,61 @@ Qwen + v2 table prompt & 69.26 \\
 \label{tab:ablation}
 \end{table}
 
-\subsection{Component Comparison}
-Table~\ref{tab:compare} places our per-component dev scores alongside the reference
-baselines reported by the benchmark. On shared components our profile is competitive
-to strong: best Text and Formula-Edit, highest Formula CDM, and a Table TEDS that
-matches the best specialised parser. We stress that the \emph{Overall} is not
-directly comparable: our dev split is prose-heavy and, as we discuss below, contains
-essentially no isolated display formulas, so its composition differs from the
-reference benchmark. The component cells, not the Overall, are the meaningful
-comparison.
+\subsection{Submission Trajectory}
+\label{sec:trajectory}
+Figure~\ref{fig:subs} plots every submission we scored on the leaderboard, both the
+five we kept and the two we discarded. Panel~(a) is the Overall trajectory; panel~(b)
+breaks it into the components that carry signal on this split (Text, reported as
+$100(1-\text{edit distance})$, Table TEDS, and Reading Order). Formula CDM is omitted:
+it is $0.43$ for the first two submissions and $0$ thereafter, because the split
+contains essentially no isolated display formulas (Section~\ref{sec:analysis}).
+
+Three things are visible in the trajectory. First, the two ensemble/prompt steps move
+Table TEDS ($+0.84$) but barely touch Text or Reading Order, which is why they buy so
+little Overall---both metrics apply to every page, while TEDS applies only to table
+pages. Second, the image-fidelity steps move exactly those high-coverage components:
+upscaling adds $+1.94$ Text and JPEG~q100 adds a further $+0.74$ Text and $+0.78$
+Reading Order. Third, the discarded submissions are informative. The column-crop
+ensemble ($67.30$) regressed by $2.35$ because detector false positives split
+single-column pages; and reverting the $13$ low-resolution table pages to quality~$90$
+($71.11$) recovered $+0.50$ TEDS but lost $0.31$ Text and $0.16$ Reading Order---one
+transcription per page means the q100 table dip cannot be separated from the
+text and order gains on the same pages. The \texttt{smiles} step is the smallest
+of the five ($+0.01$): it changes only the five pages of the split's single chemistry
+handbook, where a drawn ring structure now yields a fenced \texttt{smiles} block
+containing \texttt{O=CN1CCCCC1} instead of being skipped or redrawn as ASCII art.
+
+\begin{figure*}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/submissions.pdf}
+\caption{Leaderboard scores for all seven submissions we scored on the EvalAI Public
+Validation set ($509$ pages). (a)~Overall; grey crosses are submissions we scored and
+then discarded, placed next to the accepted submission they were built on.
+(b)~Per-component scores for the five accepted submissions; Text is reported as
+$100(1-\text{edit distance})$ so that higher is better on every axis.
+\emph{smiles for 2D structure} emits a fenced \texttt{smiles} block for every molecule
+drawn as a 2D skeletal diagram---rather than ASCII art or an omission---which the
+scorer credits as text, not as a formula (Section~\ref{sec:prompt}).
+The image-fidelity steps (\emph{upscale 2000\,px}, \emph{JPEG q100}) are the only ones
+that move the high-coverage Text and Reading Order components.}
+\label{fig:subs}
+\end{figure*}
+
+\subsection{Reference Comparison}
+Table~\ref{tab:compare} places our per-component scores next to the reference
+baselines reported by the benchmark \citep{yang2026dr}. We list both of our
+measurements: our held-out dev split (with released ground truth) and our best
+Public Validation submission ($71.33$). \textbf{This table is for reference only and
+is not an apples-to-apples comparison.} The three groups of rows are measured on
+three different page populations---the baselines on the full Dr.DocBench benchmark,
+our dev row on a prose-heavy subset of the released dev split, and our Public
+Validation row on the $509$-page leaderboard split. The splits differ in difficulty
+mix---most sharply, the Public Validation split contains essentially no isolated
+display formulas, so its CDM of $0$ is a near-empty sample rather than a failure
+(Section~\ref{sec:analysis}), while our dev split does contain scorable display
+formulas. No cell therefore supports a ranking claim, and we deliberately mark no
+``best'' value. The table is
+included to give a rough sense of where our profile sits, nothing more.
 
 \begin{table*}[t]
 \centering
@@ -217,6 +296,7 @@ comparison.
 \toprule
 Model & Text\,$\downarrow$ & Formula Edit\,$\downarrow$ & CDM\,$\uparrow$ & TEDS\,$\uparrow$ & Order\,$\downarrow$ & Overall\,$\uparrow$ \\
 \midrule
+\multicolumn{7}{l}{\emph{Reported baselines --- full Dr.DocBench benchmark}} \\
 MinerU 2.5 & 0.33 & 0.51 & 24.15 & 55.85 & 0.30 & 54.37 \\
 PaddleOCR & 0.73 & 0.42 & 30.73 & 51.79 & 0.71 & 34.78 \\
 Kimi-K2.5 & 0.19 & 0.35 & 27.04 & 51.98 & 0.18 & 60.38 \\
@@ -224,17 +304,26 @@ Claude Opus 4.6 & 0.22 & 0.37 & 32.02 & 49.21 & 0.19 & 60.19 \\
 Gemini 3.1 Pro & 0.22 & 0.35 & 32.22 & 51.26 & 0.21 & 60.13 \\
 GPT-5.5 & 0.19 & 0.36 & 34.55 & 48.90 & 0.17 & 61.94 \\
 \midrule
-Ours (dev) & \best{0.11} & \best{0.19} & \best{55.39} & \best{55.89} & \best{0.12} & 86.81$^{\dagger}$ \\
+\multicolumn{7}{l}{\emph{Ours --- different splits, reference only}} \\
+Ours, dev split & 0.11 & 0.19 & 55.39 & 55.89 & 0.12 & 86.81 \\
+Ours, Public Validation & 0.19 & --- & 0.00 & 69.35 & 0.31 & 71.33 \\
 \bottomrule
 \end{tabular}
-\caption{Per-component comparison against reported baselines. Best per column in
-\textbf{bold}. $^{\dagger}$Our Overall is on a prose-heavy dev split with a different
-composition (notably, no display formulas) and is \emph{not} a head-to-head number;
-the component cells are the meaningful comparison.}
+\caption{\textbf{Reference only---not a head-to-head comparison.} Baseline numbers
+are those reported for the full Dr.DocBench benchmark; our two rows are measured on
+our held-out dev split and on the $509$-page EvalAI Public Validation split
+respectively. Because the three populations differ in difficulty mix, no column is
+comparable across the horizontal rules and we mark no best value. Two effects of
+that mix are visible: the Public Validation split contains essentially no isolated
+display formulas, so its CDM of $0$ is a near-empty sample, not a failure
+(Section~\ref{sec:analysis}); and its table pages are easier than the ones in our
+dev split, so the same parser scores $69.35$ TEDS there and $55.89$ on dev. Formula
+Edit is not reported by the leaderboard (---).}
 \label{tab:compare}
 \end{table*}
 
 \section{Analysis and Lessons Learned}
+\label{sec:analysis}
 
 \paragraph{Image fidelity dominates.} For low-resolution scans, the bottleneck is
 how much of the page the encoder can resolve, not the model's parsing ability. The
@@ -254,7 +343,7 @@ costly.
   \item \textbf{Reading order} resisted every approach we tried: a stronger
     column-discipline prompt (net-negative), geometric XY-cut ($78.4$ even on
     ground-truth boxes, below the model's $81.85$), an off-the-shelf learned
-    reading-order model \citep[LayoutReader;][]{layoutreader} (far below both), and routing to Gemini
+    reading-order model \citep[LayoutReader;][]{wang2021layoutreader} (far below both), and routing to Gemini
     (worse on non-table multi-column prose). Ground-truth order depends on page
     \emph{content}, which the VLM already sees; a box-only model cannot beat it.
   \item \textbf{Formula CDM} is near-zero on this test set---but a layout-detector
@@ -292,6 +381,212 @@ whose behaviour (content filtering, internal \texttt{max\_pixels} cap) may chang
 is not fully controllable. Reading order remains our weakest scorable component, and
 we did not pursue model fine-tuning.
 
+% Balance the columns on the page where the bibliography ends -- but only in
+% final/preprint mode: the balance package misplaces lineno's line numbers,
+% which acl.sty enables in review mode.
+\makeatletter
+\ifacl@linenumbers\else\balance\fi
+\makeatother
 \bibliography{references}
+
+\appendix
+
+\section{Prompts}
+\label{app:prompts}
+This appendix gives the complete prompts, verbatim as sent to both engines. The
+system prompt and the user prompt are identical for Qwen3.8-max and
+Gemini~3.7-Flash; only the image encoding and the API client differ. The prompt is
+a single static string---there is no per-page conditioning, no few-shot exemplar,
+and no retry-time prompt variation (a retry re-sends the same two messages). Each
+request is one user turn containing the page image followed by the text of
+Appendix~\ref{app:user}.
+
+\subsection{System prompt}
+\label{app:system}
+\begin{lstlisting}[style=prompt]
+You are an expert document-parsing engine. You convert a single scanned document page image into faithful, structurally accurate Markdown. You transcribe exactly what is on the page: no translation, no summarizing, no commentary, no invented content. You never omit body content and never add content that is not visible.
+\end{lstlisting}
+
+\subsection{User prompt (final system)}
+\label{app:user}
+This is the prompt used for every reported result. The only block we ever rewrote is
+TABLES; the note after the listing explains it and gives the earlier, naive version it
+replaced. All other blocks (READING ORDER, TEXT, FORMULAS, CHEMISTRY, CODE, MUSIC,
+FIGURES, OUTPUT) were fixed from the first submission on.
+
+\begin{lstlisting}[style=prompt]
+Convert this document page into a single Markdown document that preserves both its text content and its structure. Follow these rules EXACTLY.
+
+READING ORDER
+- Emit blocks in natural human reading order: for multi-column layouts, finish the left column top-to-bottom before the right column. Interleave captions/footnotes at the position they belong to in the flow.
+
+TEXT
+- Transcribe the original language and script verbatim. Do not translate or normalize spelling.
+- Preserve paragraphs; separate distinct blocks with a blank line.
+- Use Markdown headings (#, ##, ...) for titles/section headings.
+- For illegible characters, transcribe your best reading of what is visible; do not guess whole words that are not there.
+
+FORMULAS
+- Isolated / display equations: wrap in display delimiters on their own line, e.g.
+  $$ E = mc^2 $$
+- Inline math: use \( ... \).
+- Use standard LaTeX. Do not wrap formulas in code fences.
+
+TABLES
+- Output every table as raw HTML: a single <table> containing <tr> rows, and <td> for EVERY cell (use <td> even for header cells — do not use <th>).
+- Reproduce the exact grid you see: the same number of rows and the same number of columns. One <td> per visual cell. Represent an empty cell as <td></td>.
+- Use rowspan / colspan ONLY where one cell visibly spans multiple rows or columns in the image; otherwise omit them. Never split one real cell into several <td>, and never merge separate cells into one.
+- Put each cell's entire text on a single line. Do NOT place <br>, <p>, <div>, <span>, or newlines inside a cell. If a word or number is wrapped across two printed lines (often with a hyphen at the break), rejoin it into one continuous token (e.g. "product-order-\nletter" -> "product-order-letter").
+- Transcribe cell text exactly, including inline math as \( ... \). Do not add, drop, reorder, or re-align columns.
+- Do NOT use Markdown pipe tables. Do NOT wrap the table in a code fence.
+- If a table continues from/to an adjacent page, still emit the portion visible on THIS page as one <table>.
+
+CHEMISTRY
+- Chemical reactions/equations: use mhchem, e.g. \ce{2H2 + O2 -> 2H2O}.
+- Drawn 2D molecular structure diagrams (skeletal/ring structures, e.g. under a "Structural Formula" heading): output the molecule as a SMILES string inside a ```smiles fenced block. Do NOT redraw it as ASCII art, and do NOT skip it. If the compound is also named on the page, use the name to produce the correct SMILES.
+- Molecular structures already given as SMILES text: put the SMILES string verbatim in a ```smiles fenced block.
+
+CODE / PSEUDOCODE
+- Put code or algorithm listings in a fenced code block with a language tag, e.g. ```python or ```pseudocode.
+
+MUSIC
+- Transcribe musical scores as MusicXML inside a ```musicxml fenced block. Do not include the <?xml?> declaration or the <score-partwise> wrapper element.
+
+FIGURES / IMAGES
+- Do not output image markdown or describe purely pictorial figures.
+- DO transcribe any text embedded in a figure (labels, axis ticks, legends, callouts) as plain text at the figure's position.
+
+OUTPUT
+- Output ONLY the Markdown for the page. No preamble, no explanation, no ``` fence around the whole answer.
+- If the page is blank, output nothing.
+\end{lstlisting}
+
+\noindent The TABLES block is the only one we rewrote against the metric rather than
+for readability, so it is worth a note. TEDS compares the predicted table as a tree
+(grid, spans, cell strings), and a structural error is expensive in a way a
+typographic one is not: one cell too few shifts every later cell in that row into the
+wrong column, whereas a misspelled word costs only that cell's string similarity. The
+block above therefore fixes what the naive instruction left open---\texttt{<td>} for
+every cell so headers are never a decision, the exact grid with \texttt{<td></td>} for
+empty cells, spans only where a cell visibly spans, and no \texttt{<br>}/\texttt{<p>}
+inside a cell (which would both add nodes and split a token the ground truth holds as
+one string). Swapping the naive block for it, everything else fixed, is the
+${\approx}5$ TEDS of Section~\ref{sec:prompt} (dev: $50.1 \rightarrow 55.1$); we never
+spent a submission on the naive block, so that figure is a dev measurement. That block
+kept the raw-HTML, no-pipe-table and continued-table rules unchanged, but on structure
+said only ``use \texttt{<tr>}/\texttt{<td>}/\texttt{<th>} with \texttt{rowspan} and
+\texttt{colspan} to reflect merged cells'' and ``transcribe the cell contents
+faithfully''---silent on empty cells, on spurious spans, and on in-cell line breaks.
+
+\noindent The READING ORDER block never changed: the column-major instruction is what
+we ship, and Section~\ref{sec:analysis} covers the reordering alternatives we tried
+and rejected.
+
+\section{Cost and Latency}
+\label{app:cost}
+Token counts and wall-clock times in this appendix are measured from our own run
+logs, not estimated. Each row of Table~\ref{tab:cost} pools every pass we ran in one
+configuration: the logs record the billed token counts returned by the provider and
+the elapsed time, from which we derive per-page tokens and end-to-end throughput at a
+concurrency of $6$ (the setting used for every reported run). Dollar figures apply the
+list rates in force in August~2026---\$2/\$6 per million input/output tokens for
+Qwen3.8-max, and \$0.75/\$3.75 for Gemini~3.7-Flash, the latter an introductory rate
+that doubles on 1~January 2027---and assume no prompt caching, which our workload
+cannot use because every request carries a different image.
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{llrrrrr}
+\toprule
+& & (pages) & \multicolumn{2}{c}{Billed tokens/page} & Wall time & Cost \\
+\cmidrule(lr){4-5}
+Configuration & Engine & Sample & in & out & (s/page) & (USD/1000 pages) \\
+\midrule
+All pages (upscaled, q100) & Qwen3.8-max & 447 & 3290 & 823 & 3.0 & 11.52 \\
+Table pages (upscaled, q100) & Gemini~3.7-Flash & 56 & 1887 & 864 & 1.9 & 4.65 \\
+\midrule
+Reference: native resolution & Qwen3.8-max & 983 & 1447 & 590 & 3.8 & 6.44 \\
+\bottomrule
+\end{tabular}
+\caption{Per-page cost and speed, measured from the run logs and pooled over every
+pass in each configuration. The first two rows are the shipped pipeline (upscaled to
+$2000$\,px, JPEG~q100); pooling is exact because billing follows encoded resolution,
+not quality. \emph{Sample} is how many pages each rate is averaged over---the pages
+we happened to send in that configuration, not the workload; Table~\ref{tab:total}
+applies these rates to a full $509$-page split. \emph{Wall time} is elapsed time over
+pages at concurrency~$6$, so a
+single request takes $6\times$ longer ($17.9$\,s for Qwen). Cost applies the
+August~2026 rates above: $11.52$ per $1000$ pages is $1.15$ US cents each. The last
+row is the native-resolution dev pass, showing what upscaling costs.}
+\label{tab:cost}
+\end{table*}
+
+\paragraph{Total consumption of the final pipeline.} Table~\ref{tab:total} applies the
+per-page rates of Table~\ref{tab:cost} to a $509$-page split: one clean pass of the
+shipped system consumes \textbf{$2.30$M billed tokens and costs \$$6.22$}, or $3572$
+input and $952$ output tokens and about $1.2$ US cents per page, in roughly $28$
+minutes of wall time at concurrency~$6$. Qwen carries $94\%$ of the bill while Gemini
+touches $15\%$ of the pages, for two compounding reasons: Qwen is priced higher per
+token (\$$2$/\$$6$ against \$$0.75$/\$$3.75$) \emph{and} its visual tokeniser bills
+$1.7\times$ more input tokens for the same image ($3290$ against $1887$), so its input
+tokens alone cost more per page than everything Gemini bills.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+Engine & Pages parsed & In tok & Out tok & USD \\
+\midrule
+Qwen3.8-max & 509 & 1.67\,M & 0.42\,M & 5.86 \\
+Gemini~3.7-Flash & 76 & 0.14\,M & 0.07\,M & 0.35 \\
+\midrule
+Total & 509 & 1.82\,M & 0.48\,M & \textbf{6.22} \\
+\bottomrule
+\end{tabular}
+\caption{Total consumption of one full pass of the final pipeline over a $509$-page
+split, at the August~2026 rates of Appendix~\ref{app:cost}. Qwen3.8-max parses every
+page; Gemini~3.7-Flash parses the $73$ table pages and the $3$ pages the content
+filter blocks, so the page counts overlap and the total row counts each of the $509$
+pages once.}
+\label{tab:total}
+\end{table} The whole campaign behind this paper---seven scored submissions plus the
+dev ablations---is an estimated \$$50$--$100$ of inference (we did not meter the
+ablation runs individually), which is worth stating plainly: on this benchmark the
+binding constraint was the daily submission quota and our own validation discipline,
+not compute.
+
+\paragraph{What drives the input cost.} Input tokens are a function of the encoded
+resolution, not of file size: the same page at JPEG quality~$90$ and quality~$100$
+bills identically, which is why the q100 change in Section~\ref{sec:image} is free.
+Upscaling is not free---the native-resolution dev pass bills $1447$ input tokens per
+page against $3290$ for the upscaled configuration, roughly $2.3\times$, which moves a
+page from $0.64$ to $1.15$ US cents---but it saturates at
+the encoder's cap (Table~\ref{tab:tokens}), so the extra cost is bounded and buys the
+$+1.03$ Overall reported in Section~\ref{sec:image}. Gemini bills roughly half as many
+input tokens per page as Qwen for the same image, a consequence of a different visual
+tokeniser rather than of anything we control.
+
+\paragraph{Latency and failure handling.} Per-request latency is dominated by output
+generation, so the slowest pages are the dense tables that emit the most tokens. We
+cap each request at $120$\,s and retry up to five times with exponential backoff;
+larger upscaled payloads made hung connections common enough that without the cap a
+single stalled request could hold a worker indefinitely. A supervisor script restarts
+a pass that stops making progress, and because inference is resume-safe (a page whose
+Markdown already exists is skipped), a restart costs only the in-flight pages---which
+is why the page counts in Table~\ref{tab:cost} are not multiples of the split sizes.
+
+\section{Request Parameters}
+\label{app:params}
+Both engines are called through an OpenAI-compatible chat-completions interface with
+one image per request and provider-default sampling (we set no temperature or
+top-$p$). The token budget is $8192$ for Qwen3.8-max and $16000$ for
+Gemini~3.7-Flash. Images are encoded as described in Section~\ref{sec:image}---long
+edge resized to $2000$\,px, JPEG quality~$100$ with chroma subsampling
+disabled---and passed as a base64 \texttt{data:} URL in an \texttt{image\_url}
+content part preceding the text of Appendix~\ref{app:user}. Transient failures are
+retried up to five times with exponential backoff and identical messages; no prompt
+text changes between attempts.
 
 \end{document}

@@ -52,8 +52,8 @@ def main():
     ap.add_argument("--limit", type=int, default=0, help="cap number of pages (debug)")
     ap.add_argument("--subjects", nargs="*", help="restrict to these subjects")
     ap.add_argument("--pages-file", help="restrict to image paths listed in this file")
-    ap.add_argument("--backend", choices=["qwen", "gemini"], default="qwen",
-                    help="qwen = DashScope qwen3.8-max (primary); gemini = table-page ensemble")
+    ap.add_argument("--backend", choices=["qwen", "gemini", "claude"], default="qwen",
+                    help="qwen = DashScope qwen3.8-max (primary); gemini = table-page ensemble; claude = Anthropic")
     ap.add_argument("--model", default=None, help="override model id")
     ap.add_argument("--concurrency", type=int, default=config.CONCURRENCY)
     args = ap.parse_args()
@@ -62,9 +62,12 @@ def main():
     if args.backend == "qwen":
         import parse_page_qwen as backend
         default_model = config.QWEN_MODEL
-    else:
+    elif args.backend == "gemini":
         import parse_page_gemini as backend
         default_model = config.GEMINI_MODEL
+    else:
+        import parse_page_claude as backend
+        default_model = backend.DEFAULT_MODEL
     client = backend.make_client()
     parse_page = backend.parse_page
     model = args.model or default_model

@@ -30,7 +30,7 @@ MAX_RETRIES = int(os.environ.get("DRDOC_MAX_RETRIES", "5"))
 QWEN_MODEL = os.environ.get("DRDOC_QWEN_MODEL", "qwen3.8-max")
 QWEN_BASE_URL = os.environ.get(
     "DRDOC_QWEN_BASE_URL",
-    "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
+    "https://token-plan.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1",
 )
 QWEN_MAX_TOKENS = int(os.environ.get("DRDOC_QWEN_MAX_TOKENS", "8192"))
 
