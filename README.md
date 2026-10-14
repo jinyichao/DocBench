@@ -30,8 +30,7 @@ How the 16 points were earned, as an **extract → audit → human-in-the-loop**
    way, on formula-free pages (82.15 → 85.63). A build that appended duplicate formula copies
    scored higher (85.91) but was not selected.
 
-See [`SESSION_LOG.md`](SESSION_LOG.md) and [`experiments/README.md`](experiments/README.md) for
-the full record, including the many negative results.
+See [`experiments/README.md`](experiments/README.md) for the research scripts behind these steps.
 
 ## Engine
 
@@ -89,7 +88,7 @@ Key knobs (env or `config.py`): `IMAGE_MAX_EDGE=2000`, `IMAGE_UPSCALE=1`,
 
 The final selected submission is `results/submission_85.63_zerocopy_UWA.zip` (jsonl format). It
 includes page-level fixes from visual audits that no script reproduces, so it is committed as the
-reference artifact. An earlier banked best, `submission_72.38.zip`, is kept at the repo root.
+reference artifact.
 
 Two post-processing passes are applied on top of the audited ensemble run, each validated against
 real ground truth on a 200-page dev sample before submission (`src/evaluate_dev.py`):

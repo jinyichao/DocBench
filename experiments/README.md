@@ -23,4 +23,4 @@ loop, not as a polished pipeline:
 | `eval/` | Dev-split CDM harness on the official md2md matching (`cdm_harness.py`) and a dedup check. | dev validation |
 
 The rules that generalise are in `src/` (`split_long_lists.py`, `split_heading_blocks.py`,
-`extract_verse_numbers.py`). See `SESSION_LOG.md` for the full record, including the many negative results.
+`extract_verse_numbers.py`).

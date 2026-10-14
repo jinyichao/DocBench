@@ -31,7 +31,6 @@ paper/main.pdf
 
 # Local submission archive and review dumps (final kept in results/)
 /submission_*.zip
-!/submission_72.38.zip
 review_*/
 
 # Notebooks scratch
@@ -41,3 +40,6 @@ Untitled*.ipynb
 # Slides are maintained as a Claude Slides artifact
 slides/
 submissions/tabswap/
+
+# Local working notes
+SESSION_LOG.md
